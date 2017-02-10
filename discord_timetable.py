@@ -124,7 +124,6 @@ async def timetable(context, weekday: str=""):
 
     await client.send_message(context.message.channel, response)
 
-    #await client.send_message(context.message.channel, "```"+str(timetable)+"```")
     db_timetable.close()
 
 
@@ -191,23 +190,17 @@ async def checkcheckin(context):
 
 
 @client.command(pass_context=True, description="Sier ifra at du blir borte en forelesning", aliases=["absent"])
-async def absence(context):
+async def absence(context, number: int=0, day: str=""):
     now = datetime.now()
 
-    msg = context.message.content.split()
-
-    if len(msg) < 2:
-        await client.send_message(context.message.channel, "Du må angi et tall for hvilken forelesning du er borte "
-                                                           "fra! (Bruk !timetable for å finne riktig nummer)")
-        return
-
-    if len(msg) == 3:
-        day = get_weekday_index(msg[2])
-        if day is False:
-            await client.send_message(context.message.channel, "Ugyldig dag")
-            return
-    else:
+    if day == "":
         day = now.weekday()
+    else:
+        day = get_weekday_index(day)
+
+    if day is False:
+        await client.send_message(context.message.channel, "Ugyldig dag")
+        return
 
     week, day = get_today(day)
 
@@ -217,8 +210,21 @@ async def absence(context):
     db_timetable = sqlite3.connect("timetable.db")
     d = db_timetable.cursor()
 
-    lecture = d.execute("SELECT * FROM timetable WHERE week = ? AND day = ? ORDER BY time",
-                        (week, day)).fetchall()[int(msg[1]) - 1]
+    subjects_today = d.execute("SELECT * FROM timetable WHERE week = ? AND day = ? ORDER BY time",
+                               (week, day)).fetchall()
+
+    for i, subject in enumerate(subjects_today):
+        start, finish = [datetime.strptime(t, "%H:%M").time() for t in subject[4].split("-")]
+
+        if start < now.time() < finish:
+            number = i + 1
+            break
+
+    if number < 1:
+        await client.send_message(context.message.channel, "Ingen forelesninger atm.")
+        return
+
+    lecture = subjects_today[number - 1]
 
     already_absent = c.execute("SELECT * FROM absence WHERE week = ? AND day = ? AND subject = ? AND time = ? AND "
                                "student = ?", (week, day, lecture[2], lecture[4],
