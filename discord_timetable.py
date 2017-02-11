@@ -3,6 +3,7 @@ from datetime import datetime
 from calendar import day_name, day_abbr
 import sqlite3
 from discord.ext import commands
+import discord.utils
 
 subject_codes = {
     "TMA4115": "Matte 3",
@@ -74,19 +75,19 @@ async def deadlines(context):
 
 
 @client.command(pass_context=True, description="Viser timeplan",
-                aliases=["tt", "timeplan", "tiddy", "timepl0x", "tiddysprinkles"])
-async def timetable(context, weekday: str=""):
+                aliases=["tt", "timeplan", "tiddy", "timepl0x", "tiddysprinkles", "timetable_me_sempai"])
+async def timetable(context, day: str=""):
     padding_width = [[3], [3], [3], [4]]
 
     db_timetable = sqlite3.connect("timetable.db")
     c = db_timetable.cursor()
 
-    if weekday:
-        weekday = weekday.lower()
-        if weekday == "week":
+    if day:
+        day = day.lower()
+        if day == "week":
             pass
         else:
-            day = get_weekday_index(weekday)
+            day = get_weekday_index(day)
             if day is False:
                 await client.send_message(context.message.channel, "Ugyldig dag")
                 return
@@ -192,6 +193,7 @@ async def checkcheckin(context):
 @client.command(pass_context=True, description="Sier ifra at du blir borte en forelesning", aliases=["absent"])
 async def absence(context, number: int=0, day: str=""):
     now = datetime.now()
+    day = day.lower()
 
     if day == "":
         day = now.weekday()
@@ -237,8 +239,7 @@ async def absence(context, number: int=0, day: str=""):
               context.message.author.id))
 
     await client.send_message(context.message.channel, "{0} registrerte fravær for {1} kl. {2}, {3} uke {4}".format(
-        context.message.author.name, subject_codes[lecture[2]], lecture[4], day_name_NOR[day], week
-    ))
+        context.message.author.name, subject_codes[lecture[2]], lecture[4], day_name_NOR[day], week))
 
     db_absence.commit()
     db_absence.close()
@@ -259,16 +260,49 @@ async def removeabsence(context):
     db_absence.close()
 
 
-@client.command(pass_context=True, description="Viser alle fravær", hidden=True)
-async def checkabsence(context):
+@client.command(pass_context=True, description="Viser alle fravær", aliases=["ca"])
+async def checkabsence(context, day: str=""):
+    now = datetime.now()
+    day = day.lower()
+
+    if day == "":
+        day = now.weekday()
+    else:
+        day = get_weekday_index(day)
+
+    if day is False:
+        await client.send_message(context.message.channel, "Ugyldig dag")
+        return
+
+    week, day = get_today(day)
+
     db_absence = sqlite3.connect("absence.db")
     c = db_absence.cursor()
 
-    c.execute("SELECT * FROM checkin WHERE day = ? and week = ?",
-              (datetime.today().weekday(), datetime.isocalendar()[1])).fetchall()
+    absence_today = c.execute("SELECT * FROM absence WHERE day = ? and week = ?",
+                              (day, week)).fetchall()
 
-    await client.send_message(context.message.channel, "Fravær i dag:")
-    # PRINT ABSENCE
+    if not len(absence_today):
+        response = "Ingen har meldt fravær "
+        if now.day == day:
+            response += "i dag."
+        else:
+            response += "for {0} uke {1}.".format(day_name_NOR[day], week)
+        await client.send_message(context.message.channel, response)
+        return
+
+    subjects = set([sub[2] for sub in absence_today])
+
+    response = "Fravær for {0} uke {1}:\n".format(day_name_NOR[day], week)
+
+    for subject in subjects:
+        user_ids = list([a[4] for a in absence_today if a[2] == subject])
+        usernames = [str(discord.utils.find(lambda u: u.id == user, client.get_all_members())).split("#")[0]
+                     for user in user_ids]
+
+        response += "- {0}: {1}".format(subject_codes[subject], ", ".join(usernames))
+
+    await client.send_message(context.message.channel, response)
 
     db_absence.close()
 
