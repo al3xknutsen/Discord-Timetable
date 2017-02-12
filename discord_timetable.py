@@ -77,10 +77,10 @@ async def deadlines(context):
 @client.command(pass_context=True, description="Viser timeplan",
                 aliases=["tt", "timeplan", "tiddy", "timepl0x", "tiddysprinkles", "timetable_me_sempai"])
 async def timetable(context, day: str=""):
-    padding_width = [[3], [3], [3], [4]]
+    padding_width = [[3], [3], [3], [4], [5], [3]]
 
     db_timetable = sqlite3.connect("timetable.db")
-    c = db_timetable.cursor()
+    c_timetable = db_timetable.cursor()
 
     if day:
         day = day.lower()
@@ -96,36 +96,83 @@ async def timetable(context, day: str=""):
 
     week, day = get_today(day)
 
-    subjects_today = c.execute("SELECT * FROM timetable WHERE day = ? AND week = ? ORDER BY time",
-                               (day, week)).fetchall()
+    students = set()
+
+    subjects_today = c_timetable.execute("SELECT * FROM timetable WHERE day = ? AND week = ? ORDER BY time",
+                                         (day, week)).fetchall()
+
+    db_checkin = sqlite3.connect("checkin.db")
+    c_checkin = db_checkin.cursor()
+
+    db_absence = sqlite3.connect("absence.db")
+    c_absence = db_absence.cursor()
+
+    for student in c_checkin.execute("SELECT * FROM checkin GROUP BY student").fetchall():
+        students.add(str(student[4]))
+    for student in c_absence.execute("SELECT * FROM absence GROUP BY student").fetchall():
+        students.add(str(student[4]))
+    students = sorted(students)
 
     for subject in subjects_today:
         padding_width[0].append(len(subject_codes[subject[2]]))
         padding_width[1].append(len(subject[4]))
         padding_width[2].append(len(subject[3]))
         padding_width[3].append(len(lecture_types[subject[5]]))
+        padding_width[4].append(len(students))
+        padding_width[5].append(len(students))
 
-    response_title = "Timeplan for {0} uke {1}\n".format(day_name_NOR[day], str(week))
+    response_title = "TIMEPLAN FOR {0} UKE {1}\n-------------------\n".format(day_name_NOR[day].upper(), str(week))
 
-    response_header = "```[#] {0} | {1} | {2} | {3}\n".format("Fag".ljust(max(padding_width[0])),
-                                                        "Tid".ljust(max(padding_width[1])),
-                                                        "Rom".ljust(max(padding_width[2])),
-                                                        "Type".ljust(max(padding_width[3])))
+    response_header = "```[#] {0} | {1} | {2} | {3} | {4} | {5}\n".format("Fag".ljust(max(padding_width[0])),
+                                                                          "Tid".ljust(max(padding_width[1])),
+                                                                          "Rom".ljust(max(padding_width[2])),
+                                                                          "Type".ljust(max(padding_width[3])),
+                                                                          "Chkin".ljust(max(padding_width[4])),
+                                                                          "Abs".ljust(max(padding_width[5])))
     response_line = "-" * len(response_header) + "\n"
 
     response = response_title + response_header + response_line
 
     for i, subject in enumerate(subjects_today):
-        response += "[{0}] {1} | {2} | {3} | {4}\n".format(i + 1,
-                                                           subject_codes[subject[2]].ljust(max(padding_width[0])),
-                                                           subject[4].ljust(max(padding_width[1])),
-                                                           subject[3].ljust(max(padding_width[2])),
-                                                           lecture_types[subject[5]].ljust(max(padding_width[3])))
-    response += "```"
+        mask_checkin = ""
+        mask_absence = ""
+
+        for student in students:
+            checked_in = c_checkin.execute(
+                "SELECT * FROM checkin WHERE day = ? AND week = ? AND subject = ? AND time = ? AND student = ?",
+                (day, week, subject[2], subject[4], student)).fetchall()
+
+            if checked_in:
+                mask_checkin += "1"
+            else:
+                mask_checkin += "0"
+
+            absent = c_absence.execute(
+                "SELECT * FROM absence WHERE day = ? AND week = ? AND subject = ? AND time = ? AND student = ?",
+                (day, week, subject[2], subject[4], student)).fetchall()
+
+            if absent:
+                mask_absence += "1"
+            else:
+                mask_absence += "0"
+
+        response += "[{0}] {1} | {2} | {3} | {4} | {5} | {6}\n".\
+            format(i + 1,
+                   subject_codes[subject[2]].ljust(max(padding_width[0])),
+                   subject[4].ljust(max(padding_width[1])),
+                   subject[3].ljust(max(padding_width[2])),
+                   lecture_types[subject[5]].ljust(max(padding_width[3])),
+                   mask_checkin.ljust(max(padding_width[4])),
+                   mask_absence.ljust(max(padding_width[5])))
+
+    response += "```\n(MASK: {0})".format(", ".join([discord.utils.get(client.get_all_members(),
+                                                                       id=user).name for user in students]))
 
     await client.send_message(context.message.channel, response)
 
     db_timetable.close()
+    db_checkin.close()
+    db_absence.close()
 
 
 @client.command(pass_context=True, description="Checks you in to the current lesson, indicating that you have arrived")
