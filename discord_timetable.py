@@ -1,4 +1,4 @@
-import asyncio, sys#, json
+import asyncio, sys
 from datetime import datetime
 from calendar import day_name, day_abbr
 import sqlite3
@@ -175,7 +175,7 @@ async def timetable(context, day: str=""):
     db_absence.close()
 
 
-@client.command(pass_context=True, description="Checks you in to the current lesson, indicating that you have arrived")
+@client.command(pass_context=True, description="Indikerer at du har ankommet til nåværende forelesning")
 async def checkin(context):
     db_timetable = sqlite3.connect("timetable.db")
     c = db_timetable.cursor()
