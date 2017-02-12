@@ -75,7 +75,7 @@ async def deadlines(context):
 
 
 @client.command(pass_context=True, description="Viser timeplan",
-                aliases=["tt", "timeplan", "tiddy", "timepl0x", "tiddysprinkles", "timetable_me_sempai"])
+                aliases=["tt", "timeplan", "tiddy", "timepl0x", "tiddysprinkles", "timetable_me_sempai", "horaro"])
 async def timetable(context, day: str=""):
     padding_width = [[3], [3], [3], [4], [5], [3]]
 
@@ -237,7 +237,8 @@ async def checkcheckin(context):
     db_checkin.close()
 
 
-@client.command(pass_context=True, description="Sier ifra at du blir borte en forelesning", aliases=["absent"])
+@client.command(pass_context=True, description="Sier ifra at du blir borte en forelesning",
+                aliases=["absent", "abs", "a"])
 async def absence(context, number: int=0, day: str=""):
     now = datetime.now()
     day = day.lower()
@@ -343,11 +344,10 @@ async def checkabsence(context, day: str=""):
     response = "Fravær for {0} uke {1}:\n".format(day_name_NOR[day], week)
 
     for subject in subjects:
-        user_ids = list([a[4] for a in absence_today if a[2] == subject])
-        usernames = [str(discord.utils.find(lambda u: u.id == user, client.get_all_members())).split("#")[0]
-                     for user in user_ids]
+        user_ids = list([str(a[4]) for a in absence_today if a[2] == subject])
+        usernames = [discord.utils.get(client.get_all_members(), id=user).name for user in user_ids]
 
-        response += "- {0}: {1}".format(subject_codes[subject], ", ".join(usernames))
+        response += "- {0}: {1}\n".format(subject_codes[subject], ", ".join(usernames))
 
     await client.send_message(context.message.channel, response)
 
